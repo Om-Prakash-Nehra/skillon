@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-_8j_#r2x8^&j*1!!1=ax0v5pb&+*q5r&t@u31u6cawex%5t_hk
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '6129c9f1aaf0.ngrok-free.app']
+ALLOWED_HOSTS = ['skillon.onrender.com', 'localhost', '127.0.0.1']
 
 
 # Application definition
