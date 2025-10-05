@@ -1,0 +1,123 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>Dashboard</h1>
+  <p>Welcome <span id="username"></span> (<span id="role"></span>)</p>
+  <button onclick="logout()">Logout</button>
+
+  <div id="create-box" style="display:none">
+    <h2>Create Ticket</h2>
+    <input id="title" placeholder="Title">
+    <textarea id="desc" placeholder="Description"></textarea>
+    <input id="priority" placeholder="Priority (low/normal/high)">
+    <input id="sla" type="number" placeholder="SLA hours" value="24">
+    <button onclick="createTicket()">Create</button>
+    <div id="create-result"></div>
+  </div>
+
+  <div>
+    <h2>Tickets</h2>
+    <input id="search" placeholder="Search">
+    <button onclick="listTickets()">Search</button>
+    <div id="tickets"></div>
+    <div id="pagination"></div>
+  </div>
+</div>
+
+<script>
+const API='/api';
+const token=localStorage.getItem('accessToken');
+const role=localStorage.getItem('userRole');
+const username=localStorage.getItem('username');
+if(!token) window.location.href='index.html';
+document.getElementById('username').innerText=username;
+document.getElementById('role').innerText=role;
+document.getElementById('create-box').style.display=(role==='user'||role==='agent'||role==='admin')?'block':'none';
+
+let limit=10, offset=0;
+
+function logout(){ localStorage.clear(); window.location.href='/'; }
+function makeIdempotency(){ return crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+Math.random().toString(36).slice(2); }
+
+async function createTicket(){
+  const body={
+    title:document.getElementById('title').value,
+    description:document.getElementById('desc').value,
+    priority:document.getElementById('priority').value||'normal',
+    sla_hours:parseInt(document.getElementById('sla').value||24)
+  };
+  const result=document.getElementById('create-result'); result.innerText='Creating...';
+  try{
+    const key=makeIdempotency();
+    const res=await fetch(API+'/tickets/create/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'Idempotency-Key':key},
+      body:JSON.stringify(body)
+    });
+    const data=await res.json();
+    if(res.ok){
+      result.innerText='Created'; 
+      document.getElementById('title').value='';
+      document.getElementById('desc').value='';
+      document.getElementById('priority').value='';
+      document.getElementById('sla').value='24';
+      listTickets();
+    } else result.innerText=JSON.stringify(data);
+  }catch(e){ result.innerText='Network error: '+e.message; }
+}
+
+async function listTickets(){
+  const container=document.getElementById('tickets'); container.innerText='Loading...';
+  const search = document.getElementById('search').value||'';
+  try{
+    const url = new URL(API+'/tickets/',location.origin);
+    url.searchParams.set('limit',limit); url.searchParams.set('offset',offset);
+    if(search) url.searchParams.set('search',search);
+    const res = await fetch(url.toString(),{headers:{'Authorization':'Bearer '+token}});
+    const json = await res.json();
+    if(!res.ok){ container.innerText=JSON.stringify(json); return; }
+    container.innerHTML='';
+    if(json.results.length===0){ container.innerText='No tickets found'; return; }
+    json.results.forEach(t=>{
+      const el=document.createElement('div'); el.className='ticket';
+      el.innerHTML = `
+  <strong>#${t.id}</strong> ${t.title} <em>[${t.status}]</em><br>
+  ${t.description}<br>
+  By: ${t.created_by} | SLA: ${t.sla_breached ? 'BREACHED' : 'OK'}<br>
+  <a href="/ticket-details/?id=${t.id}">Details</a>
+`;
+      if(role==='admin'){ el.innerHTML+=`<br><input placeholder="Agent ID" id="assign-${t.id}"><button onclick="assign(${t.id})">Assign</button>`; }
+      container.appendChild(el);
+    });
+    const pag=document.getElementById('pagination');
+    pag.innerHTML=`<button ${offset===0?'disabled':''} onclick="prev()">Prev</button> <button ${json.results.length<limit?'disabled':''} onclick="next()">Next</button>`;
+  }catch(e){ container.innerText='Network error: '+e.message; }
+}
+
+function prev(){ offset=Math.max(0,offset-limit); listTickets(); }
+function next(){ offset+=limit; listTickets(); }
+
+async function assign(id){
+  const aid=document.getElementById('assign-'+id).value;
+  if(!aid)return alert('Please enter agent id');
+  try{
+    const res=await fetch(API+`/tickets/${id}/assign/`,{
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({agent_id:parseInt(aid)})
+    });
+    const data=await res.json();
+    if(res.ok){ alert('Ticket assigned successfully'); listTickets(); } else alert('Error:'+JSON.stringify(data));
+  }catch(e){ alert('Network error: '+e.message); }
+}
+
+listTickets();
+</script>
+</body>
+</html>

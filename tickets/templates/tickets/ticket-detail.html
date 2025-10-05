@@ -1,0 +1,179 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ticket Details</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>Ticket Details</h1>
+  <button onclick="window.location.href='/dashboard/'">Back to Dashboard</button>
+  <div id="info"></div>
+  <div id="actions"></div>
+  
+  <h3>Timeline</h3>
+  <div id="timeline"></div>
+  
+  <h3>Comments</h3>
+  <div id="comments"></div>
+  
+  <h4>Add Comment</h4>
+  <textarea id="ccontent" placeholder="Enter your comment"></textarea><br>
+  <button onclick="postComment()">Post Comment</button>
+  <div id="comment-result"></div>
+</div>
+
+<script>
+const API='/api';
+const token=localStorage.getItem('accessToken');
+const role=localStorage.getItem('userRole');
+const username=localStorage.getItem('username');
+const id = new URLSearchParams(window.location.search).get('id');
+
+if(!token) window.location.href='index.html';
+if(!id) window.location.href='dashboard.html';
+
+let currentTicket = null;
+
+// Load ticket details
+async function load(){
+  try{
+    const res = await fetch(API+`/tickets/${id}/`,{headers:{'Authorization':'Bearer '+token}});
+    const t = await res.json();
+    if(!res.ok){ document.getElementById('info').innerText='Error: '+JSON.stringify(t); return; }
+    currentTicket = t;
+
+    document.getElementById('info').innerHTML=`
+      <div class="ticket-info">
+        <strong>#${t.id} - ${t.title}</strong><br>
+        <p>${t.description}</p>
+        <div><strong>Status:</strong> ${t.status}</div>
+        <div><strong>Priority:</strong> ${t.priority}</div>
+        <div><strong>Created by:</strong> ${t.created_by}</div>
+        <div><strong>Assigned to:</strong> ${t.assigned_to || 'Not assigned'}</div>
+        <div><strong>SLA Status:</strong> ${t.sla_breached?'❌ BREACHED':'✅ OK'}</div>
+        <div><strong>SLA Deadline:</strong> ${new Date(t.sla_deadline).toLocaleString()}</div>
+        <div><strong>Version:</strong> ${t.version}</div>
+      </div>
+    `;
+
+    const act = document.getElementById('actions'); act.innerHTML='';
+
+    // Edit ticket (user who created)
+    if(role==='user' && t.created_by===username){
+      act.innerHTML += `<button onclick="editTicket()">Edit Ticket</button>`;
+    }
+
+    // Update status (agent assigned)
+    if(role==='agent' && t.assigned_to===username){
+      act.innerHTML += `
+        <select id="newstatus">
+          <option value="open" ${t.status==='open'?'selected':''}>Open</option>
+          <option value="in_progress" ${t.status==='in_progress'?'selected':''}>In Progress</option>
+          <option value="resolved" ${t.status==='resolved'?'selected':''}>Resolved</option>
+          <option value="closed" ${t.status==='closed'?'selected':''}>Closed</option>
+        </select>
+        <button onclick="updateStatus()">Update Status</button>
+      `;
+    }
+
+    // Assign ticket (admin)
+    if(role==='admin'){
+      act.innerHTML += `
+        <input id="agentid" placeholder="Agent ID" type="number">
+        <button onclick="assign()">Assign Ticket</button>
+      `;
+    }
+
+    // Timeline
+    const timelineDiv = document.getElementById('timeline');
+    timelineDiv.innerHTML='';
+    (t.timeline||[]).forEach(item=>{
+      const d=document.createElement('div');
+      d.className='timeline-item';
+      d.innerText=`${new Date(item.created_at).toLocaleString()} - ${item.user}: ${item.action}`;
+      timelineDiv.appendChild(d);
+    });
+
+    // Comments
+    const cdiv = document.getElementById('comments'); cdiv.innerHTML='';
+    if(t.comments && t.comments.length>0){
+      t.comments.forEach(c=>{
+        const d=document.createElement('div');
+        d.className='comment';
+        d.innerHTML=`<strong>${c.user}</strong> (${new Date(c.created_at).toLocaleString()}):<br>${c.content}`;
+        cdiv.appendChild(d);
+      });
+    } else { cdiv.innerHTML='<p>No comments yet</p>'; }
+
+  }catch(e){ document.getElementById('info').innerText='Network error: '+e.message; }
+}
+
+// Post comment
+async function postComment(){
+  const content=document.getElementById('ccontent').value.trim();
+  if(!content){ document.getElementById('comment-result').innerText='Please enter comment'; return; }
+
+  const key = crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now();
+  try{
+    const res = await fetch(API+`/tickets/${id}/comments/`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'Idempotency-Key':key},
+      body:JSON.stringify({content})
+    });
+    if(res.ok){ document.getElementById('ccontent').value=''; document.getElementById('comment-result').innerText='Comment posted'; load(); }
+    else{ const err=await res.json(); document.getElementById('comment-result').innerText='Error: '+JSON.stringify(err); }
+  }catch(e){ document.getElementById('comment-result').innerText='Network error: '+e.message; }
+}
+
+// Update status (agent)
+async function updateStatus(){
+  const s=document.getElementById('newstatus').value;
+  try{
+    const res=await fetch(API+`/tickets/${id}/`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({status:s,version:currentTicket.version})
+    });
+    if(res.ok){ alert('Status updated'); load(); } else { const err=await res.json(); alert('Error:'+JSON.stringify(err)); }
+  }catch(e){ alert('Network error: '+e.message); }
+}
+
+// Assign ticket (admin)
+async function assign(){
+  const aid=document.getElementById('agentid').value;
+  if(!aid) return alert('Enter agent ID');
+  try{
+    const res=await fetch(API+`/tickets/${id}/assign/`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({agent_id:parseInt(aid)})
+    });
+    const data=await res.json();
+    if(res.ok){ alert('Ticket assigned'); load(); } else alert('Error: '+JSON.stringify(data));
+  }catch(e){ alert('Network error: '+e.message); }
+}
+
+// Edit ticket (user)
+async function editTicket(){
+  const newTitle=prompt('New title',currentTicket.title);
+  if(!newTitle) return;
+  const newDesc=prompt('New description',currentTicket.description);
+  if(!newDesc) return;
+
+  try{
+    const res=await fetch(API+`/tickets/${id}/`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({title:newTitle,description:newDesc,version:currentTicket.version})
+    });
+    if(res.ok){ alert('Ticket updated'); load(); } else { const err=await res.json(); alert('Error: '+JSON.stringify(err)); }
+  }catch(e){ alert('Network error: '+e.message); }
+}
+
+load();
+</script>
+</body>
+</html>

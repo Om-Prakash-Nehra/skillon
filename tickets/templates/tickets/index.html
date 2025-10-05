@@ -1,0 +1,54 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SkillOn Login</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>Login</h1>
+  <input id="username" placeholder="Username">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <div id="login-result"></div>
+  <p>New user? <a href="{% url 'register' %}">Register</a></p>
+</div>
+
+<script>
+const API = '/api';
+async function login(){
+  const u=document.getElementById('username').value;
+  const p=document.getElementById('password').value;
+  if(!u || !p) { document.getElementById('login-result').innerText='Please enter username and password'; return; }
+  document.getElementById('login-result').innerText='Logging in...';
+  
+  try{
+    const res = await fetch(API + '/login/', {
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body:JSON.stringify({username:u,password:p})
+    });
+    const data = await res.json();
+    
+    if(res.ok){
+      localStorage.setItem('accessToken', data.access);
+      localStorage.setItem('userRole', data.user.role);
+      localStorage.setItem('username', data.user.username);
+      window.location.href = '/dashboard/';
+    } else { 
+      document.getElementById('login-result').innerText = 'Login failed: ' + (data.error?.message || JSON.stringify(data)); 
+    }
+  }catch(e){ 
+    document.getElementById('login-result').innerText='Network error: '+e.message; 
+  }
+}
+
+// Allow Enter key login
+document.getElementById('password').addEventListener('keypress', e=>{
+  if(e.key==='Enter') login();
+});
+</script>
+</body>
+</html>

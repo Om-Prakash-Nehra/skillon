@@ -1,0 +1,65 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SkillOn Register</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>Register</h1>
+  <input id="username" placeholder="Username">
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <select id="role">
+    <option value="user">User</option>
+    <option value="agent">Agent</option>
+    <option value="admin">Admin</option>
+  </select>
+  <button onclick="register()">Register</button>
+  <div id="reg-result"></div>
+  <p>Have an account? <a href="{% url 'login' %}">Login</a></p>
+</div>
+
+<script>
+const API='/api';
+async function register(){
+  const body={
+    username:document.getElementById('username').value,
+    email:document.getElementById('email').value,
+    password:document.getElementById('password').value,
+    role:document.getElementById('role').value
+  };
+  if(!body.username || !body.password) {
+    document.getElementById('reg-result').innerText='Please fill all required fields';
+    return;
+  }
+  document.getElementById('reg-result').innerText='Registering...';
+  
+  try{
+    const res = await fetch(API+'/register/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    const data = await res.json();
+    
+    if(res.ok){ 
+      document.getElementById('reg-result').innerText='Registered successfully! Redirecting to login...';
+      setTimeout(() => window.location.href='/', 1500);
+    } else {
+      document.getElementById('reg-result').innerText='Registration failed: ' + (data.error?.message || JSON.stringify(data));
+    }
+  }catch(e){ 
+    document.getElementById('reg-result').innerText='Network error: '+e.message; 
+  }
+}
+
+// Enter key
+document.getElementById('password').addEventListener('keypress', e=>{
+  if(e.key==='Enter') register();
+});
+</script>
+</body>
+</html>

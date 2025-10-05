@@ -1,0 +1,6 @@
+{
+  "name": "SkillOn",
+  "description": "Hackathon ticketing system for managing support requests",
+  "endpoints": ["/api/health", "/api/_meta"],
+  "author": "Om Prakash Nehra"
+}
